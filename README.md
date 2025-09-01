@@ -7,12 +7,12 @@ Digite o seguinte comando no prompt de comando:
 ##### Comando 1
 ```cmd
 git config --global --unset http.proxy ^^
-&& git config --global http.proxy http://unip:unip@192.168.0.1:8080
+git config --global http.proxy http://192.168.0.1:8080
 ```
 ##### Comando 2
 ```cmd
 git config --global --unset https.proxy ^^
-&& git config --global https.proxy http://unip:unip@192.168.0.1:8080
+git config --global https.proxy http://192.168.0.1:8080
 ```
 
 ## Como baixar meu repositório na minha máquina:
