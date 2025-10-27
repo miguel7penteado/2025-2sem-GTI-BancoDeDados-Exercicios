@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Cadastro de Pessoas - Flask/MySQL</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; max-width: 980px; margin: 24px auto; }
+  label { display: block; margin-top: 10px; }
+  button { margin-top: 10px; margin-right: 6px; padding: 8px 12px; }
+  table { border-collapse: collapse; width:100%; margin-top:20px; }
+  th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+  img.thumb { width:60px; height:60px; object-fit:cover; border-radius:4px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<h1>Cadastro de Pessoas (Flask/MySQL)</h1>
+
+<form id="formPessoa">
+  <label>CPF (chave primária): <input id="cpf" required></label>
+  <label>Nome: <input id="nome" required></label>
+  <label>Endereço: <input id="endereco" required></label>
+  <label>Data Nasc.: <input type="date" id="data_nascimento" required></label>
+  <label>Foto: <input type="file" id="foto" accept="image/*"></label>
+
+  <div class="row">
+    <button type="button" id="btnInserir" onclick="inserir()">Inserir</button>
+    <button type="button" id="btnAlterar" onclick="alterar()">Alterar</button>
+    <button type="button" id="btnRemover" onclick="remover()">Remover</button>
+  </div>
+</form>
+
+<h2>Pesquisar</h2>
+<div class="row">
+  <input id="pesquisa" placeholder="Digite nome ou CPF" style="flex:1">
+  <button type="button" id="btnPesquisar" onclick="pesquisar()">Pesquisar</button>
+  <button type="button" onclick="listar()">Listar tudo</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>CPF</th><th>Foto</th><th>Nome</th>
+      <th>Endereço</th><th>Nascimento</th>
+    </tr>
+  </thead>
+  <tbody id="tabela"></tbody>
+</table>
+
+<script>
+const API = 'http://localhost:5000/pessoas';
+
+/* ---------- Helpers ---------- */
+function setBusy(busy) {
+  for (const id of ['btnInserir','btnAlterar','btnRemover','btnPesquisar']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = busy;
+  }
+}
+
+function validaCampos() {
+  const campos = ['cpf','nome','endereco','data_nascimento'];
+  for (const id of campos) {
+    const valor = document.getElementById(id).value.trim();
+    if (!valor) {
+      alert(`O campo "${id}" não pode ficar em branco.`);
+      return false;
+    }
+  }
+  return true;
+}
+
+function getFotoBase64() {
+  const file = document.getElementById('foto').files[0];
+  if(!file) return Promise.resolve('');
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function coletaDados(base64Foto){
+  return {
+    cpf: document.getElementById('cpf').value.trim(),
+    nome: document.getElementById('nome').value.trim(),
+    endereco: document.getElementById('endereco').value.trim(),
+    data_nascimento: document.getElementById('data_nascimento').value, // YYYY-MM-DD
+    foto: base64Foto || ''
+  };
+}
+
+async function readJsonSafe(res) {
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try { return await res.json(); } catch { return null; }
+  }
+  return null;
+}
+
+/* ---------- CRUD ---------- */
+async function inserir() {
+  if(!validaCampos()) return;
+  setBusy(true);
+  try {
+    const base64 = await getFotoBase64();
+    const pessoa = coletaDados(base64);
+
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pessoa)
+    });
+    const data = await readJsonSafe(res);
+    if(res.ok) {
+      alert('Inserido com sucesso!');
+      listar();
+      document.getElementById('formPessoa').reset();
+    } else {
+      alert('Erro: ' + (data?.error || res.statusText));
+    }
+  } catch (e) {
+    alert('Falha ao inserir: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function alterar() {
+  if(!validaCampos()) return;
+  const cpf = document.getElementById('cpf').value.trim();
+  setBusy(true);
+  try {
+    const base64 = await getFotoBase64();
+    const novosDados = coletaDados();
+    if (base64) novosDados.foto = base64;
+
+    const res = await fetch(`${API}/${encodeURIComponent(cpf)}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(novosDados)
+    });
+    const data = await readJsonSafe(res);
+    if(res.ok) {
+      alert('Alterado com sucesso!');
+      listar();
+    } else {
+      alert('Erro: ' + (data?.error || res.statusText));
+    }
+  } catch (e) {
+    alert('Falha ao alterar: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function remover() {
+  const cpf = document.getElementById('cpf').value.trim();
+  if(!cpf) return alert('Informe o CPF para remover.');
+  if(!confirm('Confirma a exclusão?')) return;
+
+  setBusy(true);
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(cpf)}`, {method:'DELETE'});
+    // 204 => sem corpo; não tente parsear JSON aqui
+    if(res.status === 204) {
+      alert('Removido com sucesso!');
+      listar();
+      return;
+    }
+    const data = await readJsonSafe(res);
+    if(res.ok) {
+      alert('Removido com sucesso!');
+      listar();
+    } else {
+      alert('Erro: ' + (data?.error || res.statusText));
+    }
+  } catch (e) {
+    alert('Falha ao remover: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function pesquisar() {
+  const termo = document.getElementById('pesquisa').value.trim();
+  setBusy(true);
+  try {
+    const url = termo ? `${API}?q=${encodeURIComponent(termo)}` : API;
+    const res = await fetch(url);
+    const data = await readJsonSafe(res);
+    if(!res.ok) return alert('Falha na pesquisa: ' + (data?.error || res.statusText));
+    preencheTabela(Array.isArray(data) ? data : (data?.items ?? []));
+  } catch (e) {
+    alert('Falha na pesquisa: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function listar() {
+  setBusy(true);
+  try {
+    const res = await fetch(API);
+    const data = await readJsonSafe(res);
+    if(!res.ok) return alert('Falha ao listar: ' + (data?.error || res.statusText));
+    preencheTabela(Array.isArray(data) ? data : (data?.items ?? []));
+  } catch (e) {
+    alert('Falha ao listar: ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ---------- UI ---------- */
+function preencheTabela(lista){
+  const tbody = document.getElementById('tabela');
+  tbody.innerHTML = '';
+  (lista || []).forEach(p=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.cpf}</td>
+      <td>${p.foto ? `<img class="thumb" src="${p.foto}" alt="foto">` : ''}</td>
+      <td>${p.nome}</td>
+      <td>${p.endereco}</td>
+      <td>${p.data_nascimento}</td>`;
+    tr.onclick = () => {
+      document.getElementById('cpf').value = p.cpf;
+      document.getElementById('nome').value = p.nome;
+      document.getElementById('endereco').value = p.endereco;
+      document.getElementById('data_nascimento').value = p.data_nascimento;
+    };
+    tbody.appendChild(tr);
+  });
+}
+
+listar();
+</script>
+</body>
+</html>
